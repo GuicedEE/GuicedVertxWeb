@@ -1,5 +1,6 @@
 package com.guicedee.vertx.web;
 
+import com.google.inject.Inject;
 import com.guicedee.client.Environment;
 import com.guicedee.client.IGuiceContext;
 import com.guicedee.guicedinjection.interfaces.IGuicePostStartup;
@@ -16,13 +17,11 @@ import io.vertx.core.net.JksOptions;
 import io.vertx.core.net.PfxOptions;
 import io.vertx.ext.web.Router;
 import io.vertx.ext.web.handler.BodyHandler;
-import jakarta.inject.Inject;
 import lombok.extern.log4j.Log4j2;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.ServiceLoader;
-import java.util.concurrent.CompletableFuture;
 
 @Log4j2
 public class VertxWebServerPostStartup implements IGuicePostStartup<VertxWebServerPostStartup>
