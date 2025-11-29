@@ -3,7 +3,7 @@ package com.guicedee.vertx.web;
 import com.google.inject.Inject;
 import com.guicedee.client.Environment;
 import com.guicedee.client.IGuiceContext;
-import com.guicedee.guicedinjection.interfaces.IGuicePostStartup;
+import com.guicedee.client.services.lifecycle.IGuicePostStartup;
 import com.guicedee.services.jsonrepresentation.IJsonRepresentation;
 import com.guicedee.vertx.web.spi.VertxHttpServerConfigurator;
 import com.guicedee.vertx.web.spi.VertxHttpServerOptionsConfigurator;

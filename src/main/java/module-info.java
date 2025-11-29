@@ -1,3 +1,4 @@
+import com.guicedee.client.services.lifecycle.IGuicePostStartup;
 import com.guicedee.vertx.web.VertxWebServerPostStartup;
 
 module com.guicedee.vertx.web {
@@ -12,7 +13,7 @@ module com.guicedee.vertx.web {
     requires transitive io.vertx.core;
     requires static lombok;
 
-    provides com.guicedee.guicedinjection.interfaces.IGuicePostStartup with VertxWebServerPostStartup;
+    provides IGuicePostStartup with VertxWebServerPostStartup;
 
     opens com.guicedee.vertx.web to com.google.guice;
 }
