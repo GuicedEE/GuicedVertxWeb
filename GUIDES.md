@@ -17,7 +17,15 @@ These guides explain how to apply the selected rules to the existing Vert.x Web 
   4. Leverage GuiceEE injector for dependency injection inside configurators when available.
   5. Default BodyHandler is applied with uploads stored under `uploads/` and cleaned after requests; override via router configurator if needed.
 
-Reference rules: [guiced-vertx-web-rules](rules/generative/backend/guicedee/web/guiced-vertx-web-rules.md), [guiced-vertx-rules](rules/generative/backend/guicedee/functions/guiced-vertx-rules.md), [guiced-injection-rules](rules/generative/backend/guicedee/functions/guiced-injection-rules.md).
+Reference rules: 
+- SPI configurators: [spi-configurators.rules.md](rules/generative/backend/guicedee/web/spi-configurators.rules.md)
+- Server configuration: [server-configuration.rules.md](rules/generative/backend/guicedee/web/server-configuration.rules.md)
+- Router setup: [router-configuration.rules.md](rules/generative/backend/guicedee/web/router-configuration.rules.md)
+- Common use cases: [use-cases.rules.md](rules/generative/backend/guicedee/web/use-cases.rules.md)
+- Module configuration: [module-info.rules.md](rules/generative/backend/guicedee/web/module-info.rules.md)
+- Lifecycle: [lifecycle.rules.md](rules/generative/backend/guicedee/web/lifecycle.rules.md)
+- Troubleshooting: [best-practices.rules.md](rules/generative/backend/guicedee/web/best-practices.rules.md)
+- Full index: [rules/generative/backend/guicedee/web/README.md](rules/generative/backend/guicedee/web/README.md)
 
 ## Fluent API & Nullness
 
