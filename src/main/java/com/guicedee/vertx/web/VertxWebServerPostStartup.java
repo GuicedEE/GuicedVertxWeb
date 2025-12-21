@@ -4,12 +4,14 @@ import com.google.inject.Inject;
 import com.guicedee.client.Environment;
 import com.guicedee.client.IGuiceContext;
 import com.guicedee.client.services.lifecycle.IGuicePostStartup;
+import com.guicedee.client.scopes.CallScoper;
+import com.guicedee.client.scopes.CallScopeProperties;
+import com.guicedee.client.scopes.CallScopeSource;
 import com.guicedee.services.jsonrepresentation.IJsonRepresentation;
 import com.guicedee.vertx.web.spi.VertxHttpServerConfigurator;
 import com.guicedee.vertx.web.spi.VertxHttpServerOptionsConfigurator;
 import com.guicedee.vertx.web.spi.VertxRouterConfigurator;
 import io.vertx.core.Future;
-import io.vertx.core.Promise;
 import io.vertx.core.http.HttpServer;
 import io.vertx.core.http.HttpServerOptions;
 import io.vertx.core.json.jackson.DatabindCodec;
@@ -34,8 +36,19 @@ public class VertxWebServerPostStartup implements IGuicePostStartup<VertxWebServ
     {
         log.info("🚀 Starting Vertx Web Server initialization");
         log.debug("📋 Creating server options with default configuration");
-        Promise<Boolean> promise = Promise.promise();
         return List.of(vertx.executeBlocking(() -> {
+            CallScoper callScoper = null;
+            boolean started = false;
+            try {
+                callScoper = IGuiceContext.get(CallScoper.class);
+                if (!callScoper.isStartedScope()) {
+                    callScoper.enter();
+                    started = true;
+                }
+                CallScopeProperties props = IGuiceContext.get(CallScopeProperties.class);
+                if (props.getSource() == null || props.getSource() == CallScopeSource.Unknown) {
+                    props.setSource(CallScopeSource.Startup);
+                }
             HttpServerOptions serverOptions = new HttpServerOptions();
             serverOptions.setCompressionSupported(true);
             serverOptions.setCompressionLevel(9);
@@ -182,6 +195,11 @@ public class VertxWebServerPostStartup implements IGuicePostStartup<VertxWebServ
             log.info("🎉 Web server initialization completed");
 
             return true;
+            } finally {
+                if (started && callScoper != null) {
+                    callScoper.exit();
+                }
+            }
         }));
     }
 
