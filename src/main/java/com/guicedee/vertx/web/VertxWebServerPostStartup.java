@@ -83,7 +83,7 @@ public class VertxWebServerPostStartup implements IGuicePostStartup<VertxWebServ
             }
             else
             {
-                log.debug("📋 HTTP server disabled by configuration");
+                log.warn("📋 HTTP server disabled by configuration");
             }
 
             // HTTPS Server setup
@@ -129,7 +129,7 @@ public class VertxWebServerPostStartup implements IGuicePostStartup<VertxWebServ
             }
             else
             {
-                log.debug("📋 HTTPS server disabled by configuration");
+                log.warn("📋 HTTPS server disabled by configuration");
             }
             
             log.debug("📊 Server summary: HTTP enabled: {}, HTTPS enabled: {}, Total servers: {}", 
@@ -200,7 +200,7 @@ public class VertxWebServerPostStartup implements IGuicePostStartup<VertxWebServ
                     callScoper.exit();
                 }
             }
-        }));
+        }, false));
     }
 
     @Override
