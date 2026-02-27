@@ -80,7 +80,8 @@ public class VertxWebServerPostStartup implements IGuicePostStartup<VertxWebServ
                 serverOptions.setMaxChunkSize(65536);
                 serverOptions.setMaxFormAttributeSize(65536);
                 serverOptions.setMaxFormFields(-1);
-                log.debug("📋 Default server options configured - Compression: enabled(level 9), TCP KeepAlive: true, MaxHeaderSize: 65536 bytes");
+                serverOptions.setMaxInitialLineLength(65536);
+                log.debug("📋 Default server options configured - Compression: enabled(level 9), TCP KeepAlive: true, MaxHeaderSize: 65536 bytes, MaxInitialLineLength: 65536 bytes");
 
                 log.debug("🔍 Loading VertxHttpServerOptionsConfigurator services");
                 ServiceLoader<VertxHttpServerOptionsConfigurator> options = ServiceLoader.load(VertxHttpServerOptionsConfigurator.class);
@@ -160,8 +161,15 @@ public class VertxWebServerPostStartup implements IGuicePostStartup<VertxWebServ
 
                 log.info("🔗 Creating and configuring Vertx Router");
                 Router router = Router.router(vertx);
-                log.debug("📋 Setting up BodyHandler with uploads directory: 'uploads', deleteUploadedFilesOnEnd: true");
-                router.route().handler(BodyHandler.create().setUploadsDirectory("uploads").setDeleteUploadedFilesOnEnd(true));
+
+                long maxBodySize = Long.parseLong(Environment.getSystemPropertyOrEnvironment("VERTX_MAX_BODY_SIZE", String.valueOf(500L * 1024 * 1024)));
+                log.debug("📋 Setting up BodyHandler with uploads directory: 'uploads', deleteUploadedFilesOnEnd: true, bodyLimit: {} bytes, handleFileUploads: true", maxBodySize);
+                router.route().handler(BodyHandler.create()
+                        .setUploadsDirectory("uploads")
+                        .setDeleteUploadedFilesOnEnd(true)
+                        .setHandleFileUploads(true)
+                        .setBodyLimit(maxBodySize)
+                        .setMergeFormAttributes(true));
 
                 log.debug("🔍 Loading VertxRouterConfigurator services");
                 ServiceLoader<VertxRouterConfigurator> routes = ServiceLoader.load(VertxRouterConfigurator.class);
