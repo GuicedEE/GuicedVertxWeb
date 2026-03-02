@@ -7,10 +7,13 @@ import com.guicedee.client.services.lifecycle.IGuicePostStartup;
 import com.guicedee.client.scopes.CallScoper;
 import com.guicedee.client.scopes.CallScopeProperties;
 import com.guicedee.client.scopes.CallScopeSource;
-import com.guicedee.services.jsonrepresentation.IJsonRepresentation;
+import com.guicedee.modules.services.jsonrepresentation.IJsonRepresentation;
+import com.guicedee.vertx.spi.VertXPreStartup;
 import com.guicedee.vertx.web.spi.VertxHttpServerConfigurator;
 import com.guicedee.vertx.web.spi.VertxHttpServerOptionsConfigurator;
 import com.guicedee.vertx.web.spi.VertxRouterConfigurator;
+import com.guicedee.vertx.spi.VerticleBuilder;
+import io.smallrye.mutiny.Uni;
 import io.vertx.core.Future;
 import io.vertx.core.http.HttpServer;
 import io.vertx.core.http.HttpServerOptions;
@@ -46,8 +49,6 @@ import java.util.ServiceLoader;
  */
 @Log4j2
 public class VertxWebServerPostStartup implements IGuicePostStartup<VertxWebServerPostStartup> {
-    @Inject
-    private io.vertx.core.Vertx vertx;
 
     /**
      * Initializes server options, creates and configures HTTP/HTTPS servers, builds the router,
@@ -56,166 +57,176 @@ public class VertxWebServerPostStartup implements IGuicePostStartup<VertxWebServ
      * @return a list containing a single {@link Future} that completes once startup is scheduled.
      */
     @Override
-    public List<Future<Boolean>> postLoad() {
+    public List<Uni<Boolean>> postLoad() {
+        var vertx = VertXPreStartup.getVertx();
         log.info("🚀 Starting Vertx Web Server initialization");
         log.debug("📋 Creating server options with default configuration");
-        return List.of(vertx.executeBlocking(() -> {
-            CallScoper callScoper = null;
-            boolean started = false;
-            try {
-                callScoper = IGuiceContext.get(CallScoper.class);
-                if (!callScoper.isStartedScope()) {
-                    callScoper.enter();
-                    started = true;
-                }
-                CallScopeProperties props = IGuiceContext.get(CallScopeProperties.class);
-                if (props.getSource() == null || props.getSource() == CallScopeSource.Unknown) {
-                    props.setSource(CallScopeSource.Startup);
-                }
-                HttpServerOptions serverOptions = new HttpServerOptions();
-                serverOptions.setCompressionSupported(true);
-                serverOptions.setCompressionLevel(9);
-                serverOptions.setTcpKeepAlive(true);
-                serverOptions.setMaxHeaderSize(65536);
-                serverOptions.setMaxChunkSize(65536);
-                serverOptions.setMaxFormAttributeSize(65536);
-                serverOptions.setMaxFormFields(-1);
-                serverOptions.setMaxInitialLineLength(65536);
-                log.debug("📋 Default server options configured - Compression: enabled(level 9), TCP KeepAlive: true, MaxHeaderSize: 65536 bytes, MaxInitialLineLength: 65536 bytes");
+        return List.of(Uni.createFrom().item(() -> {
+                    HttpServerOptions serverOptions = new HttpServerOptions();
+                    serverOptions.setCompressionSupported(true);
+                    serverOptions.setCompressionLevel(9);
+                    serverOptions.setTcpKeepAlive(true);
+                    serverOptions.setMaxHeaderSize(65536);
+                    serverOptions.setMaxChunkSize(65536);
+                    serverOptions.setMaxFormAttributeSize(65536);
+                    serverOptions.setMaxFormFields(-1);
+                    serverOptions.setMaxInitialLineLength(65536);
+                    log.debug("📋 Default server options configured - Compression: enabled(level 9), TCP KeepAlive: true, MaxHeaderSize: 65536 bytes, MaxInitialLineLength: 65536 bytes");
 
-                log.debug("🔍 Loading VertxHttpServerOptionsConfigurator services");
-                ServiceLoader<VertxHttpServerOptionsConfigurator> options = ServiceLoader.load(VertxHttpServerOptionsConfigurator.class);
-                for (VertxHttpServerOptionsConfigurator option : options) {
-                    log.debug("📋 Applying server options from configurator: {}", option.getClass().getName());
-                    serverOptions = option.builder(IGuiceContext.get(serverOptions.getClass()));
-                }
+                    log.debug("🔍 Loading VertxHttpServerOptionsConfigurator services");
+                    ServiceLoader<VertxHttpServerOptionsConfigurator> options = ServiceLoader.load(VertxHttpServerOptionsConfigurator.class);
+                    for (VertxHttpServerOptionsConfigurator option : options) {
+                        log.debug("📋 Applying server options from configurator: {}", option.getClass().getName());
+                        serverOptions = option.builder(IGuiceContext.get(serverOptions.getClass()));
+                    }
 
-                log.debug("📋 Preparing HTTP/HTTPS server creation");
-                List<HttpServer> httpServers = new ArrayList<>();
+                    log.debug("📋 Preparing HTTP/HTTPS server creation");
+                    List<HttpServer> httpServers = new ArrayList<>();
 
-                // HTTP Server setup
-                boolean httpEnabled = Boolean.parseBoolean(Environment.getProperty("HTTP_ENABLED", "true"));
-                if (httpEnabled) {
-                    int httpPort = Integer.parseInt(Environment.getSystemPropertyOrEnvironment("HTTP_PORT", "8080"));
-                    log.info("🚀 Creating HTTP server on port: {}", httpPort);
-                    serverOptions.setPort(httpPort);
-                    var server = vertx.createHttpServer(serverOptions);
-                    httpServers.add(server);
-                    log.debug("✅ HTTP server created successfully");
-                } else {
-                    log.warn("📋 HTTP server disabled by configuration");
-                }
-
-                // HTTPS Server setup
-                boolean httpsEnabled = Boolean.parseBoolean(Environment.getProperty("HTTPS_ENABLED", "false"));
-                if (httpsEnabled) {
-                    int httpsPort = Integer.parseInt(Environment.getSystemPropertyOrEnvironment("HTTPS_PORT", "443"));
-                    log.info("🚀 Creating HTTPS server on port: {}", httpsPort);
-
-                    // Configure SSL
-                    serverOptions.setSsl(true).setUseAlpn(true);
-                    serverOptions.setPort(httpsPort);
-
-                    String keystorePath = Environment.getSystemPropertyOrEnvironment("HTTPS_KEYSTORE", "");
-                    log.debug("📋 Using keystore: {}", keystorePath);
-
-                    if (keystorePath.toLowerCase().endsWith("pfx") ||
-                            keystorePath.toLowerCase().endsWith("p12") ||
-                            keystorePath.toLowerCase().endsWith("p8")) {
-                        log.debug("🔐 Configuring PFX/PKCS12 keystore");
-                        String keystorePassword = Environment.getSystemPropertyOrEnvironment("HTTPS_KEYSTORE_PASSWORD", "");
-                        serverOptions.setKeyCertOptions(new PfxOptions()
-                                .setPassword(keystorePassword)
-                                .setPath(keystorePath));
-                    } else if (keystorePath.toLowerCase().endsWith("jks")) {
-                        log.debug("🔐 Configuring JKS keystore");
-                        String keystorePassword = Environment.getSystemPropertyOrEnvironment("HTTPS_KEYSTORE_PASSWORD", "changeit");
-                        serverOptions.setKeyCertOptions(new JksOptions()
-                                .setPassword(keystorePassword)
-                                .setPath(keystorePath));
+                    // HTTP Server setup
+                    boolean httpEnabled = Boolean.parseBoolean(Environment.getProperty("HTTP_ENABLED", "true"));
+                    if (httpEnabled) {
+                        int httpPort = Integer.parseInt(Environment.getSystemPropertyOrEnvironment("HTTP_PORT", "8080"));
+                        log.info("🚀 Creating HTTP server on port: {}", httpPort);
+                        serverOptions.setPort(httpPort);
+                        var server = vertx.createHttpServer(serverOptions);
+                        httpServers.add(server);
+                        log.debug("✅ HTTP server created successfully");
                     } else {
-                        log.warn("⚠️ No valid keystore format detected for path: {}", keystorePath);
+                        log.warn("📋 HTTP server disabled by configuration");
                     }
 
-                    var server = vertx.createHttpServer(serverOptions);
-                    httpServers.add(server);
-                    log.debug("✅ HTTPS server created successfully");
-                } else {
-                    log.warn("📋 HTTPS server disabled by configuration");
-                }
+                    // HTTPS Server setup
+                    boolean httpsEnabled = Boolean.parseBoolean(Environment.getProperty("HTTPS_ENABLED", "false"));
+                    if (httpsEnabled) {
+                        int httpsPort = Integer.parseInt(Environment.getSystemPropertyOrEnvironment("HTTPS_PORT", "443"));
+                        log.info("🚀 Creating HTTPS server on port: {}", httpsPort);
 
-                log.debug("📊 Server summary: HTTP enabled: {}, HTTPS enabled: {}, Total servers: {}",
-                        httpEnabled, httpsEnabled, httpServers.size());
+                        // Configure SSL
+                        serverOptions.setSsl(true).setUseAlpn(true);
+                        serverOptions.setPort(httpsPort);
 
-                log.debug("🔍 Loading VertxHttpServerConfigurator services");
-                ServiceLoader<VertxHttpServerConfigurator> servers = ServiceLoader.load(VertxHttpServerConfigurator.class);
-                int serverConfigCount = 0;
-                for (VertxHttpServerConfigurator configurator : servers) {
-                    serverConfigCount++;
-                    log.debug("📋 Applying server configurator: {}", configurator.getClass().getName());
-                    for (var server : httpServers) {
-                        IGuiceContext.get(configurator.getClass()).builder(server);
-                    }
-                }
-                log.debug("✅ Applied {} server configurators to {} servers", serverConfigCount, httpServers.size());
+                        String keystorePath = Environment.getSystemPropertyOrEnvironment("HTTPS_KEYSTORE", "");
+                        log.debug("📋 Using keystore: {}", keystorePath);
 
-                log.info("🔗 Creating and configuring Vertx Router");
-                Router router = Router.router(vertx);
-
-                long maxBodySize = Long.parseLong(Environment.getSystemPropertyOrEnvironment("VERTX_MAX_BODY_SIZE", String.valueOf(500L * 1024 * 1024)));
-                log.debug("📋 Setting up BodyHandler with uploads directory: 'uploads', deleteUploadedFilesOnEnd: true, bodyLimit: {} bytes, handleFileUploads: true", maxBodySize);
-                router.route().handler(BodyHandler.create()
-                        .setUploadsDirectory("uploads")
-                        .setDeleteUploadedFilesOnEnd(true)
-                        .setHandleFileUploads(true)
-                        .setBodyLimit(maxBodySize)
-                        .setMergeFormAttributes(true));
-
-                log.debug("🔍 Loading VertxRouterConfigurator services");
-                ServiceLoader<VertxRouterConfigurator> routes = ServiceLoader.load(VertxRouterConfigurator.class);
-                List<VertxRouterConfigurator> sortedRoutes = new ArrayList<>();
-                routes.forEach(sortedRoutes::add);
-                sortedRoutes.sort(VertxRouterConfigurator::compareTo);
-                int routeConfigCount = 0;
-                for (VertxRouterConfigurator routeConfigurator : sortedRoutes) {
-                    routeConfigCount++;
-                    log.debug("📋 Applying router configurator: {} with sort order {}", routeConfigurator.getClass().getName(), routeConfigurator.sortOrder());
-                    router = IGuiceContext.get(routeConfigurator.getClass()).builder(router);
-                }
-                log.debug("✅ Applied {} router configurators", routeConfigCount);
-
-                log.debug("📋 Configuring Jackson ObjectMapper for JSON representation");
-                IJsonRepresentation.configureObjectMapper(DatabindCodec.mapper());
-
-                log.debug("🔗 Attaching router to all HTTP servers");
-                for (var server : httpServers) {
-                    server.requestHandler(router);
-                }
-
-                log.info("🚀 Starting HTTP/HTTPS servers");
-                int serverIndex = 0;
-                for (var server : httpServers) {
-                    final int currentServerIndex = ++serverIndex;
-                    log.debug("🔄 Starting server {}/{}", currentServerIndex, httpServers.size());
-                    server.listen().onComplete(handler -> {
-                        if (handler.failed()) {
-                            log.error("❌ Failed to start server {}/{}: {}", currentServerIndex, httpServers.size(), handler.cause().getMessage(), handler.cause());
+                        if (keystorePath.toLowerCase().endsWith("pfx") ||
+                                keystorePath.toLowerCase().endsWith("p12") ||
+                                keystorePath.toLowerCase().endsWith("p8")) {
+                            log.debug("🔐 Configuring PFX/PKCS12 keystore");
+                            String keystorePassword = Environment.getSystemPropertyOrEnvironment("HTTPS_KEYSTORE_PASSWORD", "");
+                            serverOptions.setKeyCertOptions(new PfxOptions()
+                                    .setPassword(keystorePassword)
+                                    .setPath(keystorePath));
+                        } else if (keystorePath.toLowerCase().endsWith("jks")) {
+                            log.debug("🔐 Configuring JKS keystore");
+                            String keystorePassword = Environment.getSystemPropertyOrEnvironment("HTTPS_KEYSTORE_PASSWORD", "changeit");
+                            serverOptions.setKeyCertOptions(new JksOptions()
+                                    .setPassword(keystorePassword)
+                                    .setPath(keystorePath));
                         } else {
-                            log.info("✅ Server {}/{} started successfully on port {}", currentServerIndex, httpServers.size(), handler.result().actualPort());
+                            log.warn("⚠️ No valid keystore format detected for path: {}", keystorePath);
                         }
-                    });
-                }
 
-                log.info("🎉 Web server initialization completed");
+                        var server = vertx.createHttpServer(serverOptions);
+                        httpServers.add(server);
+                        log.debug("✅ HTTPS server created successfully");
+                    } else {
+                        log.warn("📋 HTTPS server disabled by configuration");
+                    }
 
-                return true;
-            } finally {
-                if (started && callScoper != null) {
-                    callScoper.exit();
-                }
-            }
-        }, false));
+                    log.debug("📊 Server summary: HTTP enabled: {}, HTTPS enabled: {}, Total servers: {}",
+                            httpEnabled, httpsEnabled, httpServers.size());
+
+                    log.debug("🔍 Loading VertxHttpServerConfigurator services");
+                    ServiceLoader<VertxHttpServerConfigurator> servers = ServiceLoader.load(VertxHttpServerConfigurator.class);
+                    int serverConfigCount = 0;
+                    for (VertxHttpServerConfigurator configurator : servers) {
+                        serverConfigCount++;
+                        log.debug("📋 Applying server configurator: {}", configurator.getClass().getName());
+                        for (var server : httpServers) {
+                            IGuiceContext.get(configurator.getClass()).builder(server);
+                        }
+                    }
+                    log.debug("✅ Applied {} server configurators to {} servers", serverConfigCount, httpServers.size());
+
+                    log.info("🔗 Creating and configuring Vertx Router");
+                    Router router = Router.router(vertx);
+
+
+
+                    long maxBodySize = Long.parseLong(Environment.getSystemPropertyOrEnvironment("VERTX_MAX_BODY_SIZE", String.valueOf(500L * 1024 * 1024)));
+                    log.debug("📋 Setting up BodyHandler with uploads directory: 'uploads', deleteUploadedFilesOnEnd: true, bodyLimit: {} bytes, handleFileUploads: true", maxBodySize);
+                    router.route().handler(BodyHandler.create()
+                            .setUploadsDirectory("uploads")
+                            .setDeleteUploadedFilesOnEnd(true)
+                            .setHandleFileUploads(true)
+                            .setBodyLimit(maxBodySize)
+                            .setMergeFormAttributes(true));
+
+                    log.debug("🔍 Loading VertxRouterConfigurator services");
+                    ServiceLoader<VertxRouterConfigurator> routes = ServiceLoader.load(VertxRouterConfigurator.class);
+                    List<VertxRouterConfigurator> sortedRoutes = new ArrayList<>();
+                    routes.forEach(sortedRoutes::add);
+                    sortedRoutes.sort(VertxRouterConfigurator::compareTo);
+                    
+                    // Filter out configurators that are already handled by per-package verticles
+                    var excludedPrefixes = VerticleBuilder.getAnnotatedPrefixes();
+                    List<String> excludes = excludedPrefixes == null ? List.of() : excludedPrefixes;
+                    
+                    int routeConfigCount = 0;
+                    for (VertxRouterConfigurator routeConfigurator : sortedRoutes) {
+                        String pkg = routeConfigurator.getClass().getPackageName();
+                        // A configurator is "dedicated" only if its package is EXACTLY one of the annotated verticle packages
+                        // OR if it's deeply nested within one.
+                        // However, we should only skip it here if it's actually been picked up by a Verticle.
+                        boolean isDedicated = excludes.stream().anyMatch(p -> !p.isEmpty() && pkg.startsWith(p));
+                        
+                        if (!isDedicated) {
+                            routeConfigCount++;
+                            log.debug("📋 Applying global router configurator: {} from package: {}", routeConfigurator.getClass().getName(), pkg);
+                            router = IGuiceContext.get(routeConfigurator.getClass()).builder(router);
+                        } else {
+                            log.debug("📋 Skipping dedicated router configurator: {} (will be handled by its verticle)", routeConfigurator.getClass().getName());
+                        }
+                    }
+                    log.debug("✅ Applied {} global router configurators", routeConfigCount);
+
+                    log.info("🔗 Mounting per-verticle routers");
+                    List<Router> subRouters = VertxWebRouterRegistry.getSubRouters();
+                    for (Router subRouter : subRouters) {
+                        router.route().subRouter(subRouter);
+                    }
+                    log.debug("✅ Mounted {} per-verticle routers", subRouters.size());
+
+                    log.debug("📋 Configuring Jackson ObjectMapper for JSON representation");
+                    IJsonRepresentation.configureObjectMapper(DatabindCodec.mapper());
+
+                    log.debug("🔗 Attaching router to all HTTP servers");
+                    for (var server : httpServers) {
+                        server.requestHandler(router);
+                    }
+
+                    log.info("🚀 Starting HTTP/HTTPS servers");
+                    int serverIndex = 0;
+                    for (var server : httpServers) {
+                        final int currentServerIndex = ++serverIndex;
+                        log.debug("🔄 Starting server {}/{}", currentServerIndex, httpServers.size());
+                        server.listen().onComplete(handler -> {
+                            if (handler.failed()) {
+                                log.error("❌ Failed to start server {}/{}: {}", currentServerIndex, httpServers.size(), handler.cause().getMessage(), handler.cause());
+                            } else {
+                                log.info("✅ Server {}/{} started successfully on port {}", currentServerIndex, httpServers.size(), handler.result().actualPort());
+                            }
+                        });
+                    }
+
+                    log.info("🎉 Web server initialization completed");
+
+                    return true;
+                })
+        );
     }
+
 
     /**
      * Ensures the Vert.x web server startup runs early in the post-startup chain.
@@ -224,8 +235,6 @@ public class VertxWebServerPostStartup implements IGuicePostStartup<VertxWebServ
      */
     @Override
     public Integer sortOrder() {
-        int order = Integer.MIN_VALUE + 500;
-        log.debug("📋 VertxWebServerPostStartup sortOrder: {}", order);
-        return order;
+        return Integer.MIN_VALUE + 500;
     }
 }

@@ -1,0 +1,19 @@
+name: GuicedEE Web Library
+on:
+  workflow_dispatch:
+    inputs:
+      centralRelease:
+        type: boolean
+        description: Run a release to maven central
+        default: false
+  push:
+jobs:
+  GuicedWeb:
+    uses: GuicedEE/Workflows/.github/workflows/projects.yml@master
+    with:
+      baseDir: ''
+      name: 'Guiced Web'
+      sonarProjectName: 'GuicedEE_GuicedVertxWeb'
+      sonarOrganization: 'guicedee'
+      publishToCentral: ${{inputs.centralRelease}}
+    secrets: inherit

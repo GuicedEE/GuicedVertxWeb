@@ -1,217 +1,260 @@
-# GuicedVertxWeb
+# GuicedEE Vert.x Web
 
-[![Java](https://img.shields.io/badge/Java-25%20LTS-ED8B00?logo=java&logoColor=white)](https://www.oracle.com/java/)
-[![Maven](https://img.shields.io/badge/Maven-3.9+-C71A36?logo=apache-maven&logoColor=white)](https://maven.apache.org/)
-[![Vert.x](https://img.shields.io/badge/Vert.x-5.0+-662D91?logo=vertx&logoColor=white)](https://vertx.io/)
-[![GuicedEE](https://img.shields.io/badge/GuicedEE-Core%20%2B%20Client-4CAF50?logoColor=white)](https://github.com/GuicedEE)
-[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
+[![Build](https://github.com/GuicedEE/GuicedVertxWeb/actions/workflows/build.yml/badge.svg)](https://github.com/GuicedEE/GuicedVertxWeb/actions/workflows/build.yml)
+[![Maven Central](https://img.shields.io/maven-central/v/com.guicedee/web)](https://central.sonatype.com/artifact/com.guicedee/web)
+[![Maven Snapshot](https://img.shields.io/nexus/s/com.guicedee/web?server=https%3A%2F%2Foss.sonatype.org&label=Maven%20Snapshot)](https://oss.sonatype.org/content/repositories/snapshots/com/guicedee/web/)
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue)](https://www.apache.org/licenses/LICENSE-2.0)
 
-Reactive HTTP/HTTPS server bootstrap for GuicedEE applications using **Vert.x 5**. 
+![Java 25+](https://img.shields.io/badge/Java-25%2B-green)
+![Guice 7](https://img.shields.io/badge/Guice-7%2B-green)
+![Vert.X 5](https://img.shields.io/badge/Vert.x-5%2B-green)
+![Maven 4](https://img.shields.io/badge/Maven-4%2B-green)
 
-Build high-performance RESTful APIs, WebSocket services, and web applications with dependency injection, automatic lifecycle management, and pluggable SPI configurators. Full support for TLS/HTTPS, static content serving, file uploads, CORS, and authentication.
+Reactive **HTTP/HTTPS server bootstrap** for [GuicedEE](https://github.com/GuicedEE) applications using **Vert.x 5**.
+Provides the `Router`, `HttpServer`, and `BodyHandler` plumbing that higher-level modules ([rest](../rest), [websockets](../websockets), etc.) build on top of. Configuration is environment-driven; extension is SPI-driven.
+
+Built on [Vert.x Web](https://vertx.io/docs/vertx-web/java/) · [GuicedEE](https://github.com/GuicedEE) · JPMS module `com.guicedee.vertx.web` · Java 25+
+
+## 📦 Installation
+
+```xml
+<dependency>
+  <groupId>com.guicedee</groupId>
+  <artifactId>web</artifactId>
+</dependency>
+```
+
+<details>
+<summary>Gradle (Kotlin DSL)</summary>
+
+```kotlin
+implementation("com.guicedee:web:2.0.0-SNAPSHOT")
+```
+</details>
 
 ## ✨ Features
 
-- **🚀 Reactive**: Built on Vert.x 5 for non-blocking, high-throughput request handling
-- **💉 Dependency Injection**: Seamless GuicedEE integration with automatic lifecycle management via `IGuicePostStartup`
-- **🔌 Extensible SPI**: Three extension points for customizing server options, server instance, and router configuration
-- **🔒 Security-First**: Native support for HTTPS/TLS with JKS and PKCS#12 keystores; pluggable authentication/authorization
-- **📦 Zero-Config Defaults**: Sensible defaults with environment-based overrides (HTTP, HTTPS, TLS, ports)
-- **🎯 Recommended Addons**: Leverage GuicedEE dedicated addons for REST, WebSocket, GraphQL, and web services
-- **📊 Full Module System**: JPMS (Java Module System) compliant with automatic SPI discovery via `ServiceLoader`
-- **✅ Best Practices**: Built-in patterns for CORS, file uploads, static content, middleware composition, and error handling
+- **Auto-start HTTP/HTTPS servers** — `VertxWebServerPostStartup` runs as an `IGuicePostStartup` hook and creates servers from environment config
+- **Three SPI extension points** — `VertxHttpServerOptionsConfigurator`, `VertxHttpServerConfigurator`, `VertxRouterConfigurator`
+- **TLS/HTTPS** — JKS and PKCS#12 keystores auto-detected by file extension
+- **Body handling** — `BodyHandler` pre-configured with file uploads, form merging, and configurable size limits
+- **Per-verticle sub-routers** — `VertxWebVerticleStartup` creates isolated routers for `@Verticle`-annotated packages
+- **Jackson integration** — `DatabindCodec` mapper configured via `IJsonRepresentation` at startup
+- **Environment-driven** — HTTP/HTTPS ports, TLS, body limits all controlled via system properties or environment variables
 
-## 🎯 Quick Start
+## 🚀 Quick Start
 
-### 1. Clone & Initialize
+Bootstrap GuicedEE — the web server starts automatically via the post-startup hook:
 
-```bash
-git clone https://github.com/GuicedEE/GuicedVertxWeb.git
-cd GuicedVertxWeb
-git submodule update --init --recursive  # Initialize enterprise rules repository
+```java
+IGuiceContext.registerModuleForScanning.add("my.app");
+IGuiceContext.instance();
+// HTTP server is now listening on port 8080 (default)
 ```
 
-### 2. Configure Environment
+Add routes by implementing `VertxRouterConfigurator`:
 
-```bash
-cp .env.example .env
-# Edit .env with your settings (ports, HTTPS keystore, debug flags, etc.)
+```java
+public class MyRoutes implements VertxRouterConfigurator<MyRoutes> {
+
+    @Override
+    public Router builder(Router router) {
+        router.get("/health").handler(ctx ->
+            ctx.response().end("OK"));
+        return router;
+    }
+
+    @Override
+    public Integer sortOrder() {
+        return 500;  // higher = later
+    }
+}
 ```
 
-### 3. Build & Run
+Register via JPMS:
 
-```bash
-mvn clean verify
-mvn exec:java@run  # or your IDE's run configuration
+```java
+module my.app {
+    requires com.guicedee.vertx.web;
+
+    provides com.guicedee.vertx.web.spi.VertxRouterConfigurator
+        with my.app.MyRoutes;
+}
 ```
 
-The HTTP server starts on port **8080** (HTTPS on **8443** if enabled). Check logs for confirmation.
+## 📐 Startup Flow
 
-## 📚 Documentation
+```
+IGuiceContext.instance()
+ └─ IGuicePostStartup hooks
+     └─ VertxWebServerPostStartup (sortOrder = MIN_VALUE + 500)
+         ├─ Build HttpServerOptions (compression, keepalive, header limits)
+         ├─ Apply VertxHttpServerOptionsConfigurator SPIs
+         ├─ Create HTTP server   (if HTTP_ENABLED=true)
+         ├─ Create HTTPS server  (if HTTPS_ENABLED=true, with TLS keystore)
+         ├─ Apply VertxHttpServerConfigurator SPIs
+         ├─ Create Router + BodyHandler
+         ├─ Apply VertxRouterConfigurator SPIs (sorted, excluding per-verticle)
+         ├─ Mount per-verticle sub-routers from VertxWebRouterRegistry
+         ├─ Configure Jackson ObjectMapper via IJsonRepresentation
+         ├─ Attach router to all servers
+         └─ server.listen() for each server
+```
 
-### Project Structure
-- **[RULES.md](RULES.md)** — Technology stack, deployment standards, and design patterns
-- **[GUIDES.md](GUIDES.md)** — How-to guides for common tasks (REST APIs, WebSockets, HTTPS, etc.)
-- **[GLOSSARY.md](GLOSSARY.md)** — Domain terminology with cross-references to enterprise topics
-- **[IMPLEMENTATION.md](IMPLEMENTATION.md)** — Current implementation status and validation approach
-- **[PACT.md](PACT.md)** — Collaboration agreement and stage approval process
-- **[docs/PROMPT_REFERENCE.md](docs/PROMPT_REFERENCE.md)** — Stack traceability and prompt loading instructions
+## 🔌 SPI Extension Points
 
-### Architecture & Design
-- **[docs/architecture/README.md](docs/architecture/README.md)** — Architecture decision records and diagrams
-  - C4 context, container, and component diagrams
-  - HTTP request sequence flow
-  - Server startup sequence
-  - Entity-relationship diagrams (configuration)
+All SPIs are discovered via `ServiceLoader`. Register implementations with JPMS `provides...with` or `META-INF/services`.
 
-### Enterprise Rules
-- **[rules/generative/backend/guicedee/web/README.md](rules/generative/backend/guicedee/web/README.md)** — Modular rules index
-  - **[spi-configurators.rules.md](rules/generative/backend/guicedee/web/spi-configurators.rules.md)** — SPI interfaces, registration strategies, discovery patterns
-  - **[server-configuration.rules.md](rules/generative/backend/guicedee/web/server-configuration.rules.md)** — HTTP/HTTPS setup, environment variables, TLS/keystore configuration
-  - **[router-configuration.rules.md](rules/generative/backend/guicedee/web/router-configuration.rules.md)** — Router setup, path patterns, request/response handling, middleware
-  - **[use-cases.rules.md](rules/generative/backend/guicedee/web/use-cases.rules.md)** — Practical implementations with recommended GuicedEE addons
-  - **[module-info.rules.md](rules/generative/backend/guicedee/web/module-info.rules.md)** — JPMS configuration for consumers
-  - **[lifecycle.rules.md](rules/generative/backend/guicedee/web/lifecycle.rules.md)** — Startup/shutdown sequences, SPI discovery, dependency injection ordering
-  - **[best-practices.rules.md](rules/generative/backend/guicedee/web/best-practices.rules.md)** — Best practices, troubleshooting, and debugging tips
+### `VertxHttpServerOptionsConfigurator`
 
-## 🛠️ Development
+Customize `HttpServerOptions` **before** servers are created — ports, TLS, compression, buffer sizes:
 
-### Tech Stack
-- **Java 25 LTS** — Latest long-term support release
-- **Maven 3.9+** — Build automation and dependency management
-- **Vert.x 5** — Reactive, event-driven framework
-- **GuicedEE Core + Client** — Dependency injection and lifecycle management
-- **JSpecify** — Nullness annotations for static analysis
-- **CRTP Fluent APIs** — Type-safe builder patterns without Lombok
-- **JPMS** — Java Module System with automatic SPI discovery
+```java
+public class MyServerOptions implements VertxHttpServerOptionsConfigurator {
+    @Override
+    public HttpServerOptions builder(HttpServerOptions options) {
+        options.setIdleTimeout(60);
+        return options;
+    }
+}
+```
 
-### Key SPI Surfaces
-Three extension points for customizing the web server:
+### `VertxHttpServerConfigurator`
 
-1. **`VertxHttpServerOptionsConfigurator`** — Customize `HttpServerOptions` before server creation (ports, TLS, compression, etc.)
-2. **`VertxHttpServerConfigurator`** — Configure the `HttpServer` instance after creation (WebSocket handlers, metrics, custom bindings)
-3. **`VertxRouterConfigurator`** — Add routes to the `Router` (REST endpoints, static content, middleware, error handlers)
+Configure the `HttpServer` instance **after** creation — WebSocket upgrade handlers, connection hooks:
 
-Implementations are discovered via `ServiceLoader` and executed in order. Register via JPMS `provides...with` or META-INF/services.
+```java
+public class MyServerConfig implements VertxHttpServerConfigurator {
+    @Override
+    public HttpServer builder(HttpServer server) {
+        server.connectionHandler(conn ->
+            log.info("New connection from {}", conn.remoteAddress()));
+        return server;
+    }
+}
+```
 
-### Startup Hook
-- **`VertxWebServerPostStartup`** implements `IGuicePostStartup` and orchestrates the full server initialization sequence
-- Automatic lifecycle management: server startup on app startup, graceful shutdown on app exit
-- Environment-based configuration via `.env` file or system properties
+### `VertxRouterConfigurator`
+
+Add routes, middleware, and handlers to the `Router`. Implements `IDefaultService` so `sortOrder()` controls execution order:
+
+```java
+public class StaticFiles implements VertxRouterConfigurator<StaticFiles> {
+    @Override
+    public Router builder(Router router) {
+        router.route("/static/*").handler(StaticHandler.create("webroot"));
+        return router;
+    }
+
+    @Override
+    public Integer sortOrder() {
+        return 900;  // run after REST routes
+    }
+}
+```
 
 ## ⚙️ Configuration
 
-### Environment Variables
-All configuration is driven by `.env` file (or system properties/environment). Copy `.env.example` and customize:
+All configuration is driven by system properties or environment variables:
 
 | Variable | Default | Purpose |
-|----------|---------|---------|
+|---|---|---|
 | `HTTP_ENABLED` | `true` | Enable HTTP server |
 | `HTTP_PORT` | `8080` | HTTP listen port |
 | `HTTPS_ENABLED` | `false` | Enable HTTPS server |
-| `HTTPS_PORT` | `8443` | HTTPS listen port |
-| `HTTPS_KEYSTORE` | — | Path to JKS or PKCS#12 keystore file |
-| `HTTPS_KEYSTORE_PASSWORD` | — | Keystore password |
-| `BASE_URL` | — | Public base URL (for absolute links) |
-| `LOG_LEVEL` | `INFO` | Logging level (DEBUG, INFO, WARN, ERROR) |
-| `ENABLE_DEBUG_LOGS` | `false` | Verbose Vert.x activity logging |
-| `VERTX_EVENT_LOOP_POOL_SIZE` | — | Event loop thread pool size |
-| `VERTX_WORKER_POOL_SIZE` | — | Worker thread pool size |
+| `HTTPS_PORT` | `443` | HTTPS listen port |
+| `HTTPS_KEYSTORE` | — | Path to JKS or PKCS#12 keystore |
+| `HTTPS_KEYSTORE_PASSWORD` | — | Keystore password (`changeit` default for JKS) |
+| `VERTX_MAX_BODY_SIZE` | `524288000` (500 MB) | Maximum request body size in bytes |
 
-For secrets management, see [rules/generative/platform/secrets-config/env-variables.md](rules/generative/platform/secrets-config/env-variables.md).
+### HTTPS / TLS
 
-### HTTPS/TLS Setup
-GuicedVertxWeb auto-detects keystore format by file extension:
-- `.jks` → JKS keystore
-- `.pfx`, `.p12`, `.p8` → PKCS#12 keystore
+Keystore format is auto-detected by file extension:
 
-Generate a self-signed certificate for development:
+| Extension | Format |
+|---|---|
+| `.jks` | JKS |
+| `.pfx`, `.p12`, `.p8` | PKCS#12 |
+
 ```bash
-# JKS keystore
-keytool -genkey -alias selfsigned -keyalg RSA -keysize 2048 \
+# Generate a self-signed JKS keystore for development
+keytool -genkey -alias dev -keyalg RSA -keysize 2048 \
   -validity 365 -keystore keystore.jks -storepass changeit
-
-# PKCS#12 keystore
-keytool -genkey -alias selfsigned -keyalg RSA -keysize 2048 \
-  -validity 365 -keystore keystore.p12 -storetype PKCS12 -storepass changeit
 ```
 
-## 🚀 Using GuicedEE Addons (Recommended)
+### Default server options
 
-For common use cases, GuicedEE provides higher-level addons with automatic features:
+`VertxWebServerPostStartup` applies these defaults before any SPI configurator runs:
 
-- **[guicedee-rest](https://github.com/GuicedEE)** — REST/CRUD APIs with OpenAPI/Swagger documentation, parameter validation, content negotiation, role-based access control
-- **[guicedee-websocket](https://github.com/GuicedEE)** — WebSocket connections with lifecycle management, message routing, automatic reconnection
-- **[guicedee-webservice](https://github.com/GuicedEE)** — SOAP/XML web services with automatic WSDL generation, MTOM attachments
-- **[guicedee-graphql](https://github.com/GuicedEE)** — GraphQL schemas with automatic introspection, query validation, subscriptions
-- **GuicedEE Security** — Authorization, authentication, RBAC with declarative annotations
+| Option | Value |
+|---|---|
+| Compression | enabled, level 9 |
+| TCP keep-alive | `true` |
+| Max header size | 65 536 bytes |
+| Max chunk size | 65 536 bytes |
+| Max form attribute size | 65 536 bytes |
+| Max form fields | unlimited (`-1`) |
+| Max initial line length | 65 536 bytes |
 
-See [use-cases.rules.md](rules/generative/backend/guicedee/web/use-cases.rules.md) for implementation examples and when to use lower-level Vert.x Web APIs directly.
+### Body handler defaults
 
-## 🔄 CI/CD
+A `BodyHandler` is installed on all routes with:
 
-Continuous integration via **GitHub Actions** (`[.github/workflows/ci.yml](.github/workflows/ci.yml)`):
+| Setting | Value |
+|---|---|
+| Uploads directory | `uploads` |
+| Delete uploaded files on end | `true` |
+| Handle file uploads | `true` |
+| Merge form attributes | `true` |
+| Body limit | `VERTX_MAX_BODY_SIZE` (default 500 MB) |
 
-```yaml
-name: Maven Package
-on:
-  workflow_dispatch:
-  push:
-jobs:
-  GuicedInjection:
-    uses: GuicedEE/Workflows/.github/workflows/projects.yml@master
-    with:
-      baseDir: ''
-      name: 'Guiced Vert.x Web'
-    secrets:
-      USERNAME: ${{ secrets.USERNAME }}
-      USER_TOKEN: ${{ secrets.USER_TOKEN }}
-      SONA_USERNAME: ${{ secrets.SONA_USERNAME }}
-      SONA_PASSWORD: ${{ secrets.SONA_PASSWORD }}
+## 🔀 Per-Verticle Sub-Routers
+
+When a package is annotated with `@Verticle`, `VertxWebVerticleStartup` creates a dedicated `Router` for that package's `VertxRouterConfigurator` implementations. These sub-routers are mounted onto the main router automatically.
+
+This means route configurators in `@Verticle` packages are **excluded** from the global router and instead run inside their verticle's isolated context.
+
+```java
+@Verticle(workerPoolName = "api-pool", workerPoolSize = 8)
+package com.example.api;
 ```
 
-**Required repository secrets:**
-- `USERNAME` — GitHub username for deployments
-- `USER_TOKEN` — GitHub personal access token
-- `SONA_USERNAME` — Sonatype (Maven Central) username
-- `SONA_PASSWORD` — Sonatype password
+Any `VertxRouterConfigurator` in `com.example.api` (or sub-packages) will be applied to a dedicated sub-router mounted by `VertxWebVerticleStartup`.
 
-Do **not** commit secrets. Configure via GitHub repository settings → Secrets and variables → Actions.
+## 🗺️ Module Graph
+
+```
+com.guicedee.vertx.web
+ ├── com.guicedee.vertx          (Vert.x lifecycle, event bus, verticles)
+ ├── io.vertx.web                (Vert.x Web — Router, BodyHandler, etc.)
+ ├── io.vertx.core               (Vert.x core — HttpServer, HttpServerOptions)
+ └── com.guicedee.client         (GuicedEE SPI contracts)
+```
+
+## 🧩 JPMS
+
+Module name: **`com.guicedee.vertx.web`**
+
+The module:
+- **exports** `com.guicedee.vertx.web.spi`
+- **provides** `IGuicePostStartup` with `VertxWebServerPostStartup`
+- **uses** `VertxRouterConfigurator`, `VertxHttpServerConfigurator`, `VertxHttpServerOptionsConfigurator`
+
+## 🏗️ Key Classes
+
+| Class | Role |
+|---|---|
+| `VertxWebServerPostStartup` | `IGuicePostStartup` — builds servers, router, and starts listening |
+| `VertxWebVerticleStartup` | `VerticleStartup` — creates per-verticle sub-routers |
+| `VertxWebRouterRegistry` | Thread-safe registry for sub-routers contributed by verticles |
+| `VertxRouterConfigurator` | SPI — add routes and handlers to the `Router` |
+| `VertxHttpServerConfigurator` | SPI — customize `HttpServer` instances |
+| `VertxHttpServerOptionsConfigurator` | SPI — customize `HttpServerOptions` before server creation |
 
 ## 🤝 Contributing
 
-Contributions are welcome! Please follow these guidelines:
+Issues and pull requests are welcome — please add tests for new SPI implementations or server configurations.
 
-1. **Fork & Branch**: Create a feature branch (`git checkout -b feature/my-feature`)
-2. **Follow the Pact**: Review [PACT.md](PACT.md) for collaboration standards and approval stages
-3. **Run Tests**: `mvn clean verify` (Java 25 required)
-4. **Update Rules**: If behavior changes, update relevant `.rules.md` files in `rules/generative/backend/guicedee/web/`
-5. **Commit & Push**: Descriptive commit messages, push to your fork
-6. **Pull Request**: Open a PR with clear description and reference relevant issues
+## 📄 License
 
-### Development Workflow
-```bash
-# Build and test locally
-mvn clean install
-
-# Run the application
-mvn exec:java@run
-
-# Format code
-mvn spotless:apply
-
-# Run only tests
-mvn test
-```
-
-## 📋 Project Status
-
-- **Current Version**: See `pom.xml` for latest release
-- **Java Compatibility**: Java 25 LTS minimum
-- **Maven Compatibility**: Maven 3.9+
-- **Vert.x Compatibility**: Vert.x 5.0+
-- **Status**: Active development with enterprise rules maintained in submodule
-
-## 📜 License
-
-This project is licensed under the **Apache License 2.0**. See [LICENSE](LICENSE) file for details.
+[Apache 2.0](https://www.apache.org/licenses/LICENSE-2.0)
