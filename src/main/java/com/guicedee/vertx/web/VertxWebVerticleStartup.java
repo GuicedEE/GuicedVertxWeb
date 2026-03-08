@@ -58,7 +58,7 @@ public class VertxWebVerticleStartup implements VerticleStartup<VertxWebVerticle
                 for (VertxRouterConfigurator routeConfigurator : matchingRoutes) {
                     log.debug("Applying router configurator {} to router for package: '{}'", 
                             routeConfigurator.getClass().getName(), assignedPackage);
-                    
+
                     // Try to set package filter if the configurator supports it
                     try {
                         var method = routeConfigurator.getClass().getMethod("setPackageFilter", String.class);
