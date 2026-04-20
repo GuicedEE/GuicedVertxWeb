@@ -28,7 +28,7 @@ Built on [Vert.x Web](https://vertx.io/docs/vertx-web/java/) · [GuicedEE](https
 <summary>Gradle (Kotlin DSL)</summary>
 
 ```kotlin
-implementation("com.guicedee:web:2.0.0-RC7")
+implementation("com.guicedee:web:2.0.0-RC8")
 ```
 </details>
 
