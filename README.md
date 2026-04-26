@@ -2,7 +2,7 @@
 
 [![Build](https://github.com/GuicedEE/GuicedVertxWeb/actions/workflows/build.yml/badge.svg)](https://github.com/GuicedEE/GuicedVertxWeb/actions/workflows/build.yml)
 [![Maven Central](https://img.shields.io/maven-central/v/com.guicedee/web)](https://central.sonatype.com/artifact/com.guicedee/web)
-[![Maven Snapshot](https://img.shields.io/nexus/s/com.guicedee/web?server=https%3A%2F%2Foss.sonatype.org&label=Maven%20Snapshot)](https://oss.sonatype.org/content/repositories/snapshots/com/guicedee/web/)
+[![Snapshot](https://img.shields.io/badge/Snapshot-2.0.0-SNAPSHOT-orange)](https://github.com/GuicedEE/Packages/packages/maven/com.guicedee.web)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue)](https://www.apache.org/licenses/LICENSE-2.0)
 
 ![Java 25+](https://img.shields.io/badge/Java-25%2B-green)
@@ -84,21 +84,35 @@ module my.app {
 
 ## 📐 Startup Flow
 
-```
-IGuiceContext.instance()
- └─ IGuicePostStartup hooks
-     └─ VertxWebServerPostStartup (sortOrder = MIN_VALUE + 500)
-         ├─ Build HttpServerOptions (compression, keepalive, header limits)
-         ├─ Apply VertxHttpServerOptionsConfigurator SPIs
-         ├─ Create HTTP server   (if HTTP_ENABLED=true)
-         ├─ Create HTTPS server  (if HTTPS_ENABLED=true, with TLS keystore)
-         ├─ Apply VertxHttpServerConfigurator SPIs
-         ├─ Create Router + BodyHandler
-         ├─ Apply VertxRouterConfigurator SPIs (sorted, excluding per-verticle)
-         ├─ Mount per-verticle sub-routers from VertxWebRouterRegistry
-         ├─ Configure Jackson ObjectMapper via IJsonRepresentation
-         ├─ Attach router to all servers
-         └─ server.listen() for each server
+```mermaid
+flowchart TD
+    n1["IGuiceContext.instance()"]
+    n2["IGuicePostStartup hooks"]
+    n1 --> n2
+    n3["VertxWebServerPostStartup<br/>sortOrder = MIN_VALUE + 500"]
+    n2 --> n3
+    n4["Build HttpServerOptions<br/>compression, keepalive, header limits"]
+    n3 --> n4
+    n5["Apply VertxHttpServerOptionsConfigurator SPIs"]
+    n3 --> n5
+    n6["Create HTTP server<br/>if HTTP_ENABLED=true"]
+    n3 --> n6
+    n7["Create HTTPS server<br/>if HTTPS_ENABLED=true, with TLS keystore"]
+    n3 --> n7
+    n8["Apply VertxHttpServerConfigurator SPIs"]
+    n3 --> n8
+    n9["Create Router + BodyHandler"]
+    n3 --> n9
+    n10["Apply VertxRouterConfigurator SPIs<br/>sorted, excluding per-verticle"]
+    n3 --> n10
+    n11["Mount per-verticle sub-routers from VertxWebRouterRegistry"]
+    n3 --> n11
+    n12["Configure Jackson ObjectMapper via IJsonRepresentation"]
+    n3 --> n12
+    n13["Attach router to all servers"]
+    n3 --> n13
+    n14["server.listen() for each server"]
+    n3 --> n14
 ```
 
 ## 🔌 SPI Extension Points
@@ -223,12 +237,13 @@ Any `VertxRouterConfigurator` in `com.example.api` (or sub-packages) will be app
 
 ## 🗺️ Module Graph
 
-```
-com.guicedee.vertx.web
- ├── com.guicedee.vertx          (Vert.x lifecycle, event bus, verticles)
- ├── io.vertx.web                (Vert.x Web — Router, BodyHandler, etc.)
- ├── io.vertx.core               (Vert.x core — HttpServer, HttpServerOptions)
- └── com.guicedee.client         (GuicedEE SPI contracts)
+```mermaid
+flowchart LR
+    com_guicedee_vertx_web["com.guicedee.vertx.web"]
+    com_guicedee_vertx_web --> com_guicedee_vertx["com.guicedee.vertx<br/>Vert.x lifecycle, event bus, verticles"]
+    com_guicedee_vertx_web --> io_vertx_web["io.vertx.web<br/>Vert.x Web — Router, BodyHandler, etc."]
+    com_guicedee_vertx_web --> io_vertx_core["io.vertx.core<br/>Vert.x core — HttpServer, HttpServerOptions"]
+    com_guicedee_vertx_web --> com_guicedee_client["com.guicedee.client<br/>GuicedEE SPI contracts"]
 ```
 
 ## 🧩 JPMS
