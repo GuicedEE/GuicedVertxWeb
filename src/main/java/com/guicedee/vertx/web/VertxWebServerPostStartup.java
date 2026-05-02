@@ -44,7 +44,23 @@ import java.util.ServiceLoader;
  *   <li>HTTPS_ENABLED (default false)</li>
  *   <li>HTTPS_PORT (default 443)</li>
  *   <li>HTTPS_KEYSTORE</li>
+ *   <li>HTTPS_KEYSTORE_TYPE</li>
  *   <li>HTTPS_KEYSTORE_PASSWORD</li>
+ *   <li>HTTP_HOST</li>
+ *   <li>HTTP_COMPRESSION_ENABLED (default true)</li>
+ *   <li>HTTP_COMPRESSION_LEVEL (default 9)</li>
+ *   <li>HTTP_DECOMPRESSION_ENABLED (default false)</li>
+ *   <li>HTTP_TCP_KEEP_ALIVE (default true)</li>
+ *   <li>HTTP_IDLE_TIMEOUT (default 0 = disabled)</li>
+ *   <li>HTTP_MAX_HEADER_SIZE (default 65536)</li>
+ *   <li>HTTP_MAX_CHUNK_SIZE (default 65536)</li>
+ *   <li>HTTP_MAX_FORM_ATTRIBUTE_SIZE (default 65536)</li>
+ *   <li>HTTP_MAX_FORM_FIELDS (default -1 = unlimited)</li>
+ *   <li>HTTP_MAX_INITIAL_LINE_LENGTH (default 65536)</li>
+ *   <li>VERTX_MAX_BODY_SIZE</li>
+ *   <li>HTTP_UPLOADS_DIRECTORY (default uploads)</li>
+ *   <li>HTTP_DELETE_UPLOADS_ON_END (default true)</li>
+ *   <li>HTTP_HANDLE_FILE_UPLOADS (default true)</li>
  * </ul>
  */
 @Log4j2
@@ -63,15 +79,30 @@ public class VertxWebServerPostStartup implements IGuicePostStartup<VertxWebServ
         log.debug("📋 Creating server options with default configuration");
         return List.of(Uni.createFrom().item(() -> {
                     HttpServerOptions serverOptions = new HttpServerOptions();
-                    serverOptions.setCompressionSupported(true);
-                    serverOptions.setCompressionLevel(9);
-                    serverOptions.setTcpKeepAlive(true);
-                    serverOptions.setMaxHeaderSize(65536);
-                    serverOptions.setMaxChunkSize(65536);
-                    serverOptions.setMaxFormAttributeSize(65536);
-                    serverOptions.setMaxFormFields(-1);
-                    serverOptions.setMaxInitialLineLength(65536);
-                    log.debug("📋 Default server options configured - Compression: enabled(level 9), TCP KeepAlive: true, MaxHeaderSize: 65536 bytes, MaxInitialLineLength: 65536 bytes");
+                    serverOptions.setCompressionSupported(Boolean.parseBoolean(Environment.getSystemPropertyOrEnvironment("HTTP_COMPRESSION_ENABLED", "true")));
+                    serverOptions.setCompressionLevel(Integer.parseInt(Environment.getSystemPropertyOrEnvironment("HTTP_COMPRESSION_LEVEL", "9")));
+                    serverOptions.setTcpKeepAlive(Boolean.parseBoolean(Environment.getSystemPropertyOrEnvironment("HTTP_TCP_KEEP_ALIVE", "true")));
+                    serverOptions.setMaxHeaderSize(Integer.parseInt(Environment.getSystemPropertyOrEnvironment("HTTP_MAX_HEADER_SIZE", "65536")));
+                    serverOptions.setMaxChunkSize(Integer.parseInt(Environment.getSystemPropertyOrEnvironment("HTTP_MAX_CHUNK_SIZE", "65536")));
+                    serverOptions.setMaxFormAttributeSize(Integer.parseInt(Environment.getSystemPropertyOrEnvironment("HTTP_MAX_FORM_ATTRIBUTE_SIZE", "65536")));
+                    serverOptions.setMaxFormFields(Integer.parseInt(Environment.getSystemPropertyOrEnvironment("HTTP_MAX_FORM_FIELDS", "-1")));
+                    serverOptions.setMaxInitialLineLength(Integer.parseInt(Environment.getSystemPropertyOrEnvironment("HTTP_MAX_INITIAL_LINE_LENGTH", "65536")));
+
+                    int idleTimeout = Integer.parseInt(Environment.getSystemPropertyOrEnvironment("HTTP_IDLE_TIMEOUT", "0"));
+                    if (idleTimeout > 0) {
+                        serverOptions.setIdleTimeout(idleTimeout);
+                    }
+
+                    String host = Environment.getSystemPropertyOrEnvironment("HTTP_HOST", "");
+                    if (!host.isEmpty()) {
+                        serverOptions.setHost(host);
+                    }
+
+                    serverOptions.setDecompressionSupported(Boolean.parseBoolean(Environment.getSystemPropertyOrEnvironment("HTTP_DECOMPRESSION_ENABLED", "false")));
+
+                    log.debug("📋 Default server options configured - Compression: {}(level {}), TCP KeepAlive: {}, MaxHeaderSize: {} bytes, MaxInitialLineLength: {} bytes",
+                            serverOptions.isCompressionSupported(), serverOptions.getCompressionLevel(),
+                            serverOptions.isTcpKeepAlive(), serverOptions.getMaxHeaderSize(), serverOptions.getMaxInitialLineLength());
 
                     log.debug("🔍 Loading VertxHttpServerOptionsConfigurator services");
                     ServiceLoader<VertxHttpServerOptionsConfigurator> options = ServiceLoader.load(VertxHttpServerOptionsConfigurator.class);
@@ -107,17 +138,23 @@ public class VertxWebServerPostStartup implements IGuicePostStartup<VertxWebServ
                         serverOptions.setPort(httpsPort);
 
                         String keystorePath = Environment.getSystemPropertyOrEnvironment("HTTPS_KEYSTORE", "");
-                        log.debug("📋 Using keystore: {}", keystorePath);
+                        String keystoreType = Environment.getSystemPropertyOrEnvironment("HTTPS_KEYSTORE_TYPE", "").trim().toUpperCase();
+                        log.debug("📋 Using keystore: {} (type override: {})", keystorePath, keystoreType.isEmpty() ? "auto-detect" : keystoreType);
 
-                        if (keystorePath.toLowerCase().endsWith("pfx") ||
+                        boolean isPfx = "PKCS12".equals(keystoreType) || "PFX".equals(keystoreType)
+                                || (keystoreType.isEmpty() && (keystorePath.toLowerCase().endsWith("pfx") ||
                                 keystorePath.toLowerCase().endsWith("p12") ||
-                                keystorePath.toLowerCase().endsWith("p8")) {
+                                keystorePath.toLowerCase().endsWith("p8")));
+                        boolean isJks = "JKS".equals(keystoreType)
+                                || (keystoreType.isEmpty() && keystorePath.toLowerCase().endsWith("jks"));
+
+                        if (isPfx) {
                             log.debug("🔐 Configuring PFX/PKCS12 keystore");
                             String keystorePassword = Environment.getSystemPropertyOrEnvironment("HTTPS_KEYSTORE_PASSWORD", "");
                             serverOptions.setKeyCertOptions(new PfxOptions()
                                     .setPassword(keystorePassword)
                                     .setPath(keystorePath));
-                        } else if (keystorePath.toLowerCase().endsWith("jks")) {
+                        } else if (isJks) {
                             log.debug("🔐 Configuring JKS keystore");
                             String keystorePassword = Environment.getSystemPropertyOrEnvironment("HTTPS_KEYSTORE_PASSWORD", "changeit");
                             serverOptions.setKeyCertOptions(new JksOptions()
@@ -155,11 +192,14 @@ public class VertxWebServerPostStartup implements IGuicePostStartup<VertxWebServ
 
 
                     long maxBodySize = Long.parseLong(Environment.getSystemPropertyOrEnvironment("VERTX_MAX_BODY_SIZE", String.valueOf(500L * 1024 * 1024)));
-                    log.debug("📋 Setting up BodyHandler with uploads directory: 'uploads', deleteUploadedFilesOnEnd: true, bodyLimit: {} bytes, handleFileUploads: true", maxBodySize);
+                    String uploadsDir = Environment.getSystemPropertyOrEnvironment("HTTP_UPLOADS_DIRECTORY", "uploads");
+                    boolean deleteUploads = Boolean.parseBoolean(Environment.getSystemPropertyOrEnvironment("HTTP_DELETE_UPLOADS_ON_END", "true"));
+                    boolean handleFileUploads = Boolean.parseBoolean(Environment.getSystemPropertyOrEnvironment("HTTP_HANDLE_FILE_UPLOADS", "true"));
+                    log.debug("📋 Setting up BodyHandler with uploads directory: '{}', deleteUploadedFilesOnEnd: {}, bodyLimit: {} bytes, handleFileUploads: {}", uploadsDir, deleteUploads, maxBodySize, handleFileUploads);
                     router.route().handler(BodyHandler.create()
-                            .setUploadsDirectory("uploads")
-                            .setDeleteUploadedFilesOnEnd(true)
-                            .setHandleFileUploads(true)
+                            .setUploadsDirectory(uploadsDir)
+                            .setDeleteUploadedFilesOnEnd(deleteUploads)
+                            .setHandleFileUploads(handleFileUploads)
                             .setBodyLimit(maxBodySize)
                             .setMergeFormAttributes(true));
 
