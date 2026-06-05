@@ -75,8 +75,8 @@ public class VertxWebServerPostStartup implements IGuicePostStartup<VertxWebServ
     @Override
     public List<Uni<Boolean>> postLoad() {
         var vertx = VertXPreStartup.getVertx();
-        log.info("🚀 Starting Vertx Web Server initialization");
-        log.debug("📋 Creating server options with default configuration");
+        log.debug("🚀 Starting Vertx Web Server initialization");
+        log.trace("📋 Creating server options with default configuration");
         return List.of(Uni.createFrom().item(() -> {
                     HttpServerOptions serverOptions = new HttpServerOptions();
                     serverOptions.setCompressionSupported(Boolean.parseBoolean(Environment.getSystemPropertyOrEnvironment("HTTP_COMPRESSION_ENABLED", "true")));
@@ -104,21 +104,21 @@ public class VertxWebServerPostStartup implements IGuicePostStartup<VertxWebServ
                             serverOptions.isCompressionSupported(), serverOptions.getCompressionLevel(),
                             serverOptions.isTcpKeepAlive(), serverOptions.getMaxHeaderSize(), serverOptions.getMaxInitialLineLength());
 
-                    log.debug("🔍 Loading VertxHttpServerOptionsConfigurator services");
+                    log.trace("🔍 Loading VertxHttpServerOptionsConfigurator services");
                     ServiceLoader<VertxHttpServerOptionsConfigurator> options = ServiceLoader.load(VertxHttpServerOptionsConfigurator.class);
                     for (VertxHttpServerOptionsConfigurator option : options) {
-                        log.debug("📋 Applying server options from configurator: {}", option.getClass().getName());
+                        log.trace("📋 Applying server options from configurator: {}", option.getClass().getName());
                         serverOptions = option.builder(IGuiceContext.get(serverOptions.getClass()));
                     }
 
-                    log.debug("📋 Preparing HTTP/HTTPS server creation");
+                    log.trace("📋 Preparing HTTP/HTTPS server creation");
                     List<HttpServer> httpServers = new ArrayList<>();
 
                     // HTTP Server setup
                     boolean httpEnabled = Boolean.parseBoolean(Environment.getProperty("HTTP_ENABLED", "true"));
                     if (httpEnabled) {
                         int httpPort = Integer.parseInt(Environment.getSystemPropertyOrEnvironment("HTTP_PORT", "8080"));
-                        log.info("🚀 Creating HTTP server on port: {}", httpPort);
+                        log.trace("🚀 Creating HTTP server on port: {}", httpPort);
                         serverOptions.setPort(httpPort);
                         var server = vertx.createHttpServer(serverOptions);
                         httpServers.add(server);
@@ -131,7 +131,7 @@ public class VertxWebServerPostStartup implements IGuicePostStartup<VertxWebServ
                     boolean httpsEnabled = Boolean.parseBoolean(Environment.getProperty("HTTPS_ENABLED", "false"));
                     if (httpsEnabled) {
                         int httpsPort = Integer.parseInt(Environment.getSystemPropertyOrEnvironment("HTTPS_PORT", "443"));
-                        log.info("🚀 Creating HTTPS server on port: {}", httpsPort);
+                        log.trace("🚀 Creating HTTPS server on port: {}", httpsPort);
 
                         // Configure SSL
                         serverOptions.setSsl(true).setUseAlpn(true);
@@ -149,13 +149,13 @@ public class VertxWebServerPostStartup implements IGuicePostStartup<VertxWebServ
                                 || (keystoreType.isEmpty() && keystorePath.toLowerCase().endsWith("jks"));
 
                         if (isPfx) {
-                            log.debug("🔐 Configuring PFX/PKCS12 keystore");
+                            log.trace("🔐 Configuring PFX/PKCS12 keystore");
                             String keystorePassword = Environment.getSystemPropertyOrEnvironment("HTTPS_KEYSTORE_PASSWORD", "");
                             serverOptions.setKeyCertOptions(new PfxOptions()
                                     .setPassword(keystorePassword)
                                     .setPath(keystorePath));
                         } else if (isJks) {
-                            log.debug("🔐 Configuring JKS keystore");
+                            log.trace("🔐 Configuring JKS keystore");
                             String keystorePassword = Environment.getSystemPropertyOrEnvironment("HTTPS_KEYSTORE_PASSWORD", "changeit");
                             serverOptions.setKeyCertOptions(new JksOptions()
                                     .setPassword(keystorePassword)
@@ -166,7 +166,7 @@ public class VertxWebServerPostStartup implements IGuicePostStartup<VertxWebServ
 
                         var server = vertx.createHttpServer(serverOptions);
                         httpServers.add(server);
-                        log.debug("✅ HTTPS server created successfully");
+                        log.trace("✅ HTTPS server created successfully");
                     } else {
                         log.warn("📋 HTTPS server disabled by configuration");
                     }
@@ -174,7 +174,7 @@ public class VertxWebServerPostStartup implements IGuicePostStartup<VertxWebServ
                     log.debug("📊 Server summary: HTTP enabled: {}, HTTPS enabled: {}, Total servers: {}",
                             httpEnabled, httpsEnabled, httpServers.size());
 
-                    log.debug("🔍 Loading VertxHttpServerConfigurator services");
+                    log.trace("🔍 Loading VertxHttpServerConfigurator services");
                     ServiceLoader<VertxHttpServerConfigurator> servers = ServiceLoader.load(VertxHttpServerConfigurator.class);
                     int serverConfigCount = 0;
                     for (VertxHttpServerConfigurator configurator : servers) {
@@ -186,7 +186,7 @@ public class VertxWebServerPostStartup implements IGuicePostStartup<VertxWebServ
                     }
                     log.debug("✅ Applied {} server configurators to {} servers", serverConfigCount, httpServers.size());
 
-                    log.info("🔗 Creating and configuring Vertx Router");
+                    log.trace("🔗 Creating and configuring Vertx Router");
                     Router router = Router.router(vertx);
 
 
@@ -195,7 +195,7 @@ public class VertxWebServerPostStartup implements IGuicePostStartup<VertxWebServ
                     String uploadsDir = Environment.getSystemPropertyOrEnvironment("HTTP_UPLOADS_DIRECTORY", "uploads");
                     boolean deleteUploads = Boolean.parseBoolean(Environment.getSystemPropertyOrEnvironment("HTTP_DELETE_UPLOADS_ON_END", "true"));
                     boolean handleFileUploads = Boolean.parseBoolean(Environment.getSystemPropertyOrEnvironment("HTTP_HANDLE_FILE_UPLOADS", "true"));
-                    log.debug("📋 Setting up BodyHandler with uploads directory: '{}', deleteUploadedFilesOnEnd: {}, bodyLimit: {} bytes, handleFileUploads: {}", uploadsDir, deleteUploads, maxBodySize, handleFileUploads);
+                    log.trace("📋 Setting up BodyHandler with uploads directory: '{}', deleteUploadedFilesOnEnd: {}, bodyLimit: {} bytes, handleFileUploads: {}", uploadsDir, deleteUploads, maxBodySize, handleFileUploads);
                     router.route().handler(BodyHandler.create()
                             .setUploadsDirectory(uploadsDir)
                             .setDeleteUploadedFilesOnEnd(deleteUploads)
@@ -203,7 +203,7 @@ public class VertxWebServerPostStartup implements IGuicePostStartup<VertxWebServ
                             .setBodyLimit(maxBodySize)
                             .setMergeFormAttributes(true));
 
-                    log.debug("🔍 Loading VertxRouterConfigurator services");
+                    log.trace("🔍 Loading VertxRouterConfigurator services");
                     ServiceLoader<VertxRouterConfigurator> routes = ServiceLoader.load(VertxRouterConfigurator.class);
                     List<VertxRouterConfigurator> sortedRoutes = new ArrayList<>();
                     routes.forEach(sortedRoutes::add);
@@ -223,34 +223,34 @@ public class VertxWebServerPostStartup implements IGuicePostStartup<VertxWebServ
                         
                         if (!isDedicated) {
                             routeConfigCount++;
-                            log.debug("📋 Applying global router configurator: {} from package: {}", routeConfigurator.getClass().getName(), pkg);
+                            log.trace("📋 Applying global router configurator: {} from package: {}", routeConfigurator.getClass().getName(), pkg);
                             router = IGuiceContext.get(routeConfigurator.getClass()).builder(router);
                         } else {
-                            log.debug("📋 Skipping dedicated router configurator: {} (will be handled by its verticle)", routeConfigurator.getClass().getName());
+                            log.trace("📋 Skipping dedicated router configurator: {} (will be handled by its verticle)", routeConfigurator.getClass().getName());
                         }
                     }
                     log.debug("✅ Applied {} global router configurators", routeConfigCount);
 
-                    log.info("🔗 Mounting per-verticle routers");
+                    log.trace("🔗 Mounting per-verticle routers");
                     List<Router> subRouters = VertxWebRouterRegistry.getSubRouters();
                     for (Router subRouter : subRouters) {
                         router.route().subRouter(subRouter);
                     }
                     log.debug("✅ Mounted {} per-verticle routers", subRouters.size());
 
-                    log.debug("📋 Configuring Jackson ObjectMapper for JSON representation");
+                    log.trace("📋 Configuring Jackson ObjectMapper for JSON representation");
                     IJsonRepresentation.configureObjectMapper(DatabindCodec.mapper());
 
-                    log.debug("🔗 Attaching router to all HTTP servers");
+                    log.trace("🔗 Attaching router to all HTTP servers");
                     for (var server : httpServers) {
                         server.requestHandler(router);
                     }
 
-                    log.info("🚀 Starting HTTP/HTTPS servers");
+                    log.trace("🚀 Starting HTTP/HTTPS servers");
                     int serverIndex = 0;
                     for (var server : httpServers) {
                         final int currentServerIndex = ++serverIndex;
-                        log.debug("🔄 Starting server {}/{}", currentServerIndex, httpServers.size());
+                        log.trace("🔄 Starting server {}/{}", currentServerIndex, httpServers.size());
                         server.listen().onComplete(handler -> {
                             if (handler.failed()) {
                                 log.error("❌ Failed to start server {}/{}: {}", currentServerIndex, httpServers.size(), handler.cause().getMessage(), handler.cause());
@@ -260,7 +260,7 @@ public class VertxWebServerPostStartup implements IGuicePostStartup<VertxWebServ
                         });
                     }
 
-                    log.info("🎉 Web server initialization completed");
+                    log.trace("🎉 Web server initialization completed");
 
                     return true;
                 })
