@@ -17,6 +17,7 @@ import io.smallrye.mutiny.Uni;
 import io.vertx.core.Future;
 import io.vertx.core.http.HttpServer;
 import io.vertx.core.http.HttpServerOptions;
+import io.vertx.core.http.HttpVersion;
 import io.vertx.core.json.jackson.DatabindCodec;
 import io.vertx.core.net.JksOptions;
 import io.vertx.core.net.PfxOptions;
@@ -135,6 +136,25 @@ public class VertxWebServerPostStartup implements IGuicePostStartup<VertxWebServ
 
                         // Configure SSL
                         serverOptions.setSsl(true).setUseAlpn(true);
+
+                        // IMPORTANT: Vert.x core has no RFC 8441 support (WebSocket over HTTP/2).
+                        // The default ALPN list advertises HTTP/2 first ([HTTP_2, HTTP_1_1]), so browsers
+                        // negotiate h2 on wss:// connections. The HTTP/1.1 "Upgrade: websocket" handshake
+                        // then has nothing to negotiate against and fails with a bare
+                        // "WebSocket connection to 'wss://...' failed" (plain HTTP works because it never
+                        // negotiates ALPN and stays HTTP/1.1).
+                        // Restrict the TLS server to HTTP/1.1 by default so WebSocket/STOMP upgrades work
+                        // over wss://. Set HTTP2_ENABLED=true to advertise HTTP/2 as well (only safe if the
+                        // application does not rely on server-side WebSockets).
+                        boolean http2Enabled = Boolean.parseBoolean(Environment.getSystemPropertyOrEnvironment("HTTP2_ENABLED", "false"));
+                        if (http2Enabled) {
+                            log.debug("📋 HTTPS ALPN advertising HTTP/2 and HTTP/1.1 (HTTP2_ENABLED=true) - server WebSockets over wss:// may fail");
+                            serverOptions.setAlpnVersions(List.of(HttpVersion.HTTP_2, HttpVersion.HTTP_1_1));
+                        } else {
+                            log.debug("📋 HTTPS ALPN restricted to HTTP/1.1 to keep wss:// WebSocket upgrades working (set HTTP2_ENABLED=true to override)");
+                            serverOptions.setAlpnVersions(List.of(HttpVersion.HTTP_1_1));
+                        }
+
                         serverOptions.setPort(httpsPort);
 
                         String keystorePath = Environment.getSystemPropertyOrEnvironment("HTTPS_KEYSTORE", "");
