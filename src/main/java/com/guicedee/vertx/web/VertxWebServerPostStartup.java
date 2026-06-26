@@ -109,7 +109,17 @@ public class VertxWebServerPostStartup implements IGuicePostStartup<VertxWebServ
                     ServiceLoader<VertxHttpServerOptionsConfigurator> options = ServiceLoader.load(VertxHttpServerOptionsConfigurator.class);
                     for (VertxHttpServerOptionsConfigurator option : options) {
                         log.trace("📋 Applying server options from configurator: {}", option.getClass().getName());
-                        serverOptions = option.builder(IGuiceContext.get(serverOptions.getClass()));
+                        // Contract: a single default serverOptions instance is created above and threaded through
+                        // every SPI; each configurator mutates and returns that SAME instance (never null).
+                        // Previously this passed IGuiceContext.get(serverOptions.getClass()) - a brand-new empty
+                        // HttpServerOptions per iteration - which discarded the base options AND every prior
+                        // configurator's changes, leaving only the last configurator's mutations on a default
+                        // object. That defeated additive WebSocket sub-protocol registration (STOMP "v1x.stomp",
+                        // GraphQL "graphql-transport-ws") and the permessage-deflate disable, so wss:// handshakes
+                        // upgraded with subProtocol=null and dropped immediately (HttpClosedException / code 1006).
+                        // Resolve the configurator from Guice (so @Inject-ed configurators work) and pass the
+                        // accumulator so all changes compose.
+                        serverOptions = IGuiceContext.get(option.getClass()).builder(serverOptions);
                     }
 
                     log.trace("📋 Preparing HTTP/HTTPS server creation");
@@ -259,8 +269,7 @@ public class VertxWebServerPostStartup implements IGuicePostStartup<VertxWebServ
                     log.debug("✅ Mounted {} per-verticle routers", subRouters.size());
 
                     log.trace("📋 Configuring Jackson ObjectMapper for JSON representation");
-                    IJsonRepresentation.configureObjectMapper(DatabindCodec.mapper());
-
+                    //IJsonRepresentation.configureObjectMapper(DatabindCodec.mapper());
                     log.trace("🔗 Attaching router to all HTTP servers");
                     for (var server : httpServers) {
                         server.requestHandler(router);
