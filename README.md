@@ -9,7 +9,7 @@
 ![Vert.X 5](https://img.shields.io/badge/Vert.x-5%2B-green)
 
 Reactive **HTTP/HTTPS server bootstrap** for [GuicedEE](https://github.com/GuicedEE) applications using **Vert.x 5**.
-Provides the `Router`, `HttpServer`, and `BodyHandler` plumbing that higher-level modules ([rest](../rest), [websockets](../websockets), etc.) build on top of. Configuration is environment-driven; extension is SPI-driven.
+Provides the `RouterConfig`, `HttpServer`, and `BodyHandler` plumbing that higher-level modules ([rest](../rest), [websockets](../websockets), etc.) build on top of. Configuration is environment-driven; extension is SPI-driven.
 
 Built on [Vert.x Web](https://vertx.io/docs/vertx-web/java/) · [GuicedEE](https://github.com/GuicedEE) · JPMS module `com.guicedee.vertx.web` · Java 25+
 
@@ -148,7 +148,7 @@ public class MyServerConfig implements VertxHttpServerConfigurator {
 
 ### `VertxRouterConfigurator`
 
-Add routes, middleware, and handlers to the `Router`. Implements `IDefaultService` so `sortOrder()` controls execution order:
+Add routes, middleware, and handlers to the `RouterConfig`. Implements `IDefaultService` so `sortOrder()` controls execution order:
 
 ```java
 public class StaticFiles implements VertxRouterConfigurator<StaticFiles> {
@@ -222,7 +222,7 @@ A `BodyHandler` is installed on all routes with:
 
 ## 🔀 Per-Verticle Sub-Routers
 
-When a package is annotated with `@Verticle`, `VertxWebVerticleStartup` creates a dedicated `Router` for that package's `VertxRouterConfigurator` implementations. These sub-routers are mounted onto the main router automatically.
+When a package is annotated with `@Verticle`, `VertxWebVerticleStartup` creates a dedicated `RouterConfig` for that package's `VertxRouterConfigurator` implementations. These sub-routers are mounted onto the main router automatically.
 
 This means route configurators in `@Verticle` packages are **excluded** from the global router and instead run inside their verticle's isolated context.
 
@@ -260,7 +260,7 @@ The module:
 | `VertxWebServerPostStartup` | `IGuicePostStartup` — builds servers, router, and starts listening |
 | `VertxWebVerticleStartup` | `VerticleStartup` — creates per-verticle sub-routers |
 | `VertxWebRouterRegistry` | Thread-safe registry for sub-routers contributed by verticles |
-| `VertxRouterConfigurator` | SPI — add routes and handlers to the `Router` |
+| `VertxRouterConfigurator` | SPI — add routes and handlers to the `RouterConfig` |
 | `VertxHttpServerConfigurator` | SPI — customize `HttpServer` instances |
 | `VertxHttpServerOptionsConfigurator` | SPI — customize `HttpServerOptions` before server creation |
 
