@@ -271,3 +271,33 @@ Issues and pull requests are welcome — please add tests for new SPI implementa
 ## 📄 License
 
 [Apache 2.0](https://www.apache.org/licenses/LICENSE-2.0)
+
+## Additional isolated HTTP listeners
+
+Implement `com.guicedee.vertx.web.spi.ManagedHttpListenerProvider` and return
+`ManagedHttpListener` definitions (name, defensive-copy `HttpServerOptions`, and
+`Function<Vertx, Router>`). Register the provider in both `module-info.java`
+(`provides ... with ...`) and the matching `META-INF/services` file. Return an empty
+list to disable the feature without allocating another runtime.
+
+The lifecycle loads providers through Guice after normal web initialization,
+awaits every bind, rolls back this group's listeners on failure and closes them
+on shutdown, including a bind still in progress. Applications must propagate
+startup-hook failure to their launcher; this hook does not stop unrelated servers.
+
+Build each router using the supplied Vert.x instance. The group owns a separate
+non-clustered runtime with one event-loop thread, one worker and one internal
+blocking worker. It does not install the application's router/server configurators,
+body parser, routes, authentication, metrics instrumentation or event-bus bridge.
+Existing thread-safe application health/metrics services can be used by handlers;
+providers are responsible for access policy, bounded non-blocking work and TLS.
+The runtime closes with the group and is not created when there are no listeners.
+
+This separation prevents Vert.x from silently sharing a public socket on address
+collision. Socket reuse is forced off; names and positive ports must be unique
+within the group. Port zero requests distinct ephemeral bindings; negative shared
+ports are rejected. All direct WebSocket upgrades are denied. An occupied socket
+fails startup instead of dispatching a private router on another server's port.
+
+`ManagedHttpListenerTest` exercises real loopback HTTP, bind failure and rollback,
+public socket collision, duplicate ports, shutdown races and copied options.
