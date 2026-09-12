@@ -1,4 +1,4 @@
-package com.guicedee.vertx.web;
+package com.guicedee.vertx.web.test;
 
 import org.junit.jupiter.api.Test;
 
