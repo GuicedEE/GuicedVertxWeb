@@ -272,7 +272,8 @@ public class VertxWebServerPostStartup implements IGuicePostStartup<VertxWebServ
                     //IJsonRepresentation.configureObjectMapper(DatabindCodec.mapper());
                     log.trace("🔗 Attaching router to all HTTP servers");
                     for (var server : httpServers) {
-                        server.requestHandler(router);
+                        var configuredRouter = router;
+                        server.requestHandler(request -> configuredRouter.handle(com.guicedee.vertx.WebSocketBackpressure.capture(request)));
                     }
 
                     log.trace("🚀 Starting HTTP/HTTPS servers");
